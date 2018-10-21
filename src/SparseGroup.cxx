@@ -1,6 +1,4 @@
-//#include "SparseHungarian/SparseGroup.h"
-//#include "../SparseHungarian/SparseGroup.h"
-#include "SparseGroup.h"
+#include "SparseHungarian/SparseGroup.h"
 #include <memory>
 #include <iostream>
 #include <set>
