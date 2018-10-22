@@ -1,6 +1,7 @@
 cmake_minimum_required( VERSION 3.9 )
 project( SparseHungarian VERSION 1.0.0 LANGUAGES CXX )
 
+set( Eigen3_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cmake )
 find_package( Eigen3 )
 
 add_library( SparseHungarianLib SHARED
