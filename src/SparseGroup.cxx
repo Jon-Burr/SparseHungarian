@@ -1,99 +1,83 @@
 #include "SparseHungarian/SparseGroup.h"
 #include <memory>
-#include <iostream>
-#include <set>
 #include <algorithm>
-#include <list>
-
-namespace {
-  // check for the intersection of two sets
-  template <typename T>
-    bool set_intersection(const std::set<T>& set1, const std::set<T>& set2)
-    {
-      auto itr1 = set1.begin();
-      auto itr2 = set2.begin();
-      while(itr1 != set1.end() && itr2 != set2.end() )
-      {
-        if (*itr1 < *itr2)
-          ++itr1;
-        else if (*itr2 < *itr1)
-          ++itr2;
-        else
-          return true;
-      }
-      return false;
-    }
-}
+#include <queue>
 
 namespace SparseHungarian {
-
-  SparseGroup::SparseGroup(
-      const std::set<idx_t>& indicesA,
-      const std::set<idx_t>& indicesB,
+  void SparseGroup::buildCosts(
       const cost_matrix_t& fullCosts,
       float maxCost)
-    : indicesA(indicesA.begin(), indicesA.end() ),
-      indicesB(indicesB.begin(), indicesB.end() ),
-      costs(indicesA.size(), indicesB.size() ),
-      maxCost(maxCost)
   {
-    for (unsigned int ia = 0; ia < this->indicesA.size(); ++ia) {
-      for (unsigned int ib = 0; ib < this->indicesB.size(); ++ib) {
-        costs(ia, ib) =
-          fullCosts(this->indicesA.at(ia), this->indicesB.at(ib) );
-      }
-    }
+    this->maxCost = maxCost;
+    costs.resize(indicesA.size(), indicesB.size() );
+    for (idx_t ia = 0; ia < indicesA.size(); ++ia)
+      for (idx_t ib = 0; ib < indicesB.size(); ++ib)
+        costs(ia, ib) = fullCosts(indicesA[ia], indicesB[ib]);
   }
 
   std::vector<SparseGroup> splitProblemIntoSparseGroups(
       const Eigen::MatrixXf& costs,
       float maxCost)
   {
-    // b node associated to each a node
-    struct GroupIndices {
-      std::set<idx_t> indicesA;
-      std::set<idx_t> indicesB;
-    };
-    // There's going to be a lot of iterator movement and deletion. List
-    // *should* be more efficient for this and less likely to invalidate the
-    // iterators...
-    std::list<GroupIndices> grpIndices;
-    for (idx_t ia = 0; ia < costs.rows(); ++ia) {
-      grpIndices.emplace_back();
-      grpIndices.back().indicesA.insert(ia);
-      for (idx_t ib = 0; ib < costs.cols(); ++ib)
-        if (costs(ia, ib) <= maxCost)
-          grpIndices.back().indicesB.insert(ib);
-      if (grpIndices.back().indicesB.size() == 0)
-        grpIndices.pop_back();
-    }
-    // Begin with one group for each 'A' nodes.
-    // All grpIndices have at least one of each type of node.
-    // Any solo nodes (ones that cannot match to anything) have already been
-    // excluded
-    auto itr1 = grpIndices.begin();
-    ++itr1;
-    while (itr1 != grpIndices.end() ) {
-      auto itr2 = grpIndices.begin();
-      while (itr2 != itr1) {
-        // If there is any intersection between the two grpIndices 'A' or 'B' nodes
-        // they have to be combined. However, by construction we are increasing
-        // the 'A' node index monotonically so there will never be such an
-        // intersection
-        if (set_intersection(itr2->indicesB, itr1->indicesB) ) {
-          itr1->indicesB.insert(itr2->indicesB.begin(), itr2->indicesB.end() );
-          itr1->indicesA.insert(itr2->indicesA.begin(), itr2->indicesA.end() );
-          itr2 = grpIndices.erase(itr2); // advances the iterator
-        }
-        else 
-          ++itr2;
-      }
-      // Hit the end of the list, advance itr1 and return itr2 to the beginning
-      ++itr1;
-    }
+    idx_t nVtxA = costs.rows();
+    idx_t nVtxB = costs.cols();
     std::vector<SparseGroup> groups;
-    for (const auto& indices : grpIndices) {
-      groups.emplace_back(indices.indicesA, indices.indicesB, costs, maxCost);
+    // This is essentially a graph partioning problem. Use a breadth first
+    // search
+    // Keep track of which vertices we've visited
+    std::vector<bool> visitedA(nVtxA, false);
+    std::vector<bool> visitedB(nVtxB, false);
+    // Record the queue for the BFS. As it must contain vertices from both A and
+    // B store the B nodes as idx + nVtxA
+    std::queue<idx_t> vtxQueue;
+
+    // Step through the A vertices to seed the groups
+    idx_t nextVtx = 0;
+    while (nextVtx != nVtxA) {
+      if (visitedA[nextVtx]) {
+        ++nextVtx;
+        continue;
+      }
+      visitedA[nextVtx] = true;
+      vtxQueue.push(nextVtx);
+      groups.emplace_back();
+      SparseGroup& group = groups.back();
+      group.indicesA.push_back(nextVtx);
+      while (vtxQueue.size() != 0) {
+        idx_t current = vtxQueue.front();
+        vtxQueue.pop();
+        if (current >= nVtxA) {
+          // this is a 'B' vertex
+          current -= nVtxA;
+          // Start from nextVtx+1, we've already visited all the 'A' vertices
+          // before this
+          for (idx_t ia = nextVtx + 1; ia < nVtxA; ++ia) {
+            if (visitedA[ia] || costs.coeff(ia, current) > maxCost)
+              continue;
+            vtxQueue.push(ia);
+            group.indicesA.push_back(ia);
+            visitedA[ia] = true;
+          }
+        }
+        else {
+          // This is an 'A' vertex
+          for (idx_t ib = 0; ib < nVtxB; ++ib) {
+            if (visitedB[ib] || costs.coeff(current, ib) > maxCost)
+              continue;
+            vtxQueue.push(ib+nVtxA);
+            group.indicesB.push_back(ib);
+            visitedB[ib] = true;
+          }
+        }
+      }
+      // Reaching here means that we've completed the group
+      if (group.indicesB.size() == 0)
+        // We only want to return groups that contain some matchings
+        groups.pop_back();
+      else
+        group.buildCosts(costs, maxCost);
+      // Walk on the A index
+      ++nextVtx;
     }
     return groups;
   }

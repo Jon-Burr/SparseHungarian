@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <map>
 
-#include <iostream>
 #include <exception>
 
 namespace {
@@ -40,7 +39,6 @@ namespace SparseHungarian {
       const cost_matrix_t& costs,
       float maxCost)
   {
-    std::cout << "Begin matching: " << std::endl << costs << std::endl;
     // Not required to receive a square matrix, however it's much simpler if we
     // can assume that nRows <= nCols. Therefore if this isn't the case, just
     // flip the cost matrix
@@ -58,7 +56,6 @@ namespace SparseHungarian {
     // I will sometimes use 'closest' to refer to the element in the other set
     // with the lowest cost
 
-    std::cout << "Try the simple matching" << std::endl;
     // Start by attempting a very simple matching - just match every element in
     // A to the closest element in B
     match_vec_t matches;
@@ -66,22 +63,20 @@ namespace SparseHungarian {
     idx_t nMatchB(costs.cols() ); // number of objects being matched from B
     matches.reserve(nMatchA);
     bool valid = true; // Whether or not the simple match is valid
-    std::set<idx_t> matchedIndices;
+    std::vector<bool> matchedIndices(costs.cols(), false);
     for (idx_t ia = 0; ia < nMatchA; ++ia) {
       idx_t minIdx;
       if (costs.row(ia).minCoeff(&minIdx) <= maxCost) {
-        // 'second' on the set insert operator tells you if the object was
-        // actually inserted (i.e. wasn't already there)
-        valid &= matchedIndices.insert(minIdx).second;
+        valid &= !matchedIndices[minIdx];
         if (!valid) // stop trying the instant a conflict is found
           break;
+        matchedIndices[minIdx] = true;
         matches.push_back(std::make_pair(ia, minIdx) );
       }
     }
     if (valid)
       return matches;
 
-    std::cout << "Simple matching wasn't enough :(" << std::endl;
     HungarianSolver solver(costs, maxCost, matches);
     return solver.solution();
   }

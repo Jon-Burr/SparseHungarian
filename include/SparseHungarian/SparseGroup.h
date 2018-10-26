@@ -19,18 +19,6 @@ namespace SparseHungarian {
   class SparseGroup {
     public:
       SparseGroup() {}
-      /**
-      * \brief Create a sparse group
-      * \param indicesA The subset of indices from set A in the group
-      * \param indicesB The subset of indices from set B in the group
-      * \param fullcosts The costs from the original problem
-      * \param maxCost The maximum cost in this matching problem
-      */
-      SparseGroup(
-          const std::set<idx_t>& indicesA,
-          const std::set<idx_t>& indicesB,
-          const cost_matrix_t& fullCosts,
-          float maxCost);
       /// The subset of indices from set A in the group
       std::vector<idx_t> indicesA;
       /// The subset of indices from set B in the group
@@ -39,6 +27,15 @@ namespace SparseHungarian {
       cost_matrix_t costs;
       /// The maximum cost in this problem
       float maxCost;
+      /**
+       * \brief build the cost matrix for this group
+       * \param fullCosts The cost matrix for the full matching problem
+       * \param maxCost The maximum cost in the problem
+       */
+      void buildCosts(
+         const cost_matrix_t& costs,
+         float maxCost);
+
   };
 
   /**

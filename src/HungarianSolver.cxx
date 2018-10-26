@@ -1,9 +1,6 @@
 #include "SparseHungarian/HungarianSolver.h"
 #include <exception>
-#include <set>
 #include <queue>
-
-#include <iostream>
 
 namespace SparseHungarian {
   HungarianSolver::HungarianSolver(
@@ -24,7 +21,6 @@ namespace SparseHungarian {
     if (nVtxA > nVtxB)
       throw std::runtime_error("Invalid matrix supplied to HungarianSolver"
           "The matrix must have nRows <= nCols!");
-    std::cout << "Square the matrix" << std::endl;
     // First square the matrix
     m_costs.conservativeResize(nVtxB, nVtxB);
     for (idx_t ia = nVtxA; ia < nVtxB; ++ia)
@@ -40,18 +36,14 @@ namespace SparseHungarian {
       m_labelsA[ia] = m_costs.row(ia).maxCoeff();
     solve();
     // Now load the solution into the internal vector
-    std::cout << "Build solution" << std::endl;
     for (idx_t ia = 0; ia < nVtxA; ++ia) {
-      std::cout << ia << std::endl;
       if (costs.coeff(ia, m_matchA[ia]) < maxCost)
         m_solution.push_back(std::make_pair(ia, m_matchA[ia]) );
     }
-    std::cout << "Done" << std::endl;
   }
 
   void HungarianSolver::solve() 
   {
-    std::cout << "In solve" << std::endl;
     // Begin by looking for an unmatched 'A' vertex
     // We can stop this search at nVtxA as we don't care about what the extra
     // dummy vertices match to
@@ -69,8 +61,6 @@ namespace SparseHungarian {
 
   float HungarianSolver::getSlack(idx_t a, idx_t b) const
   {
-    std::cout << "Get slack" << std::endl;
-    std::cout << m_labelsA[a] << " + " << m_labelsB[b] << " - " << m_costs.coeff(a, b) << std::endl;
     return m_labelsA[a] + m_labelsB[b] - m_costs.coeff(a, b);
   }
 
@@ -82,7 +72,7 @@ namespace SparseHungarian {
     // Vertices which are matched to each other act as single vertices as far as
     // the search is concerned. Therefore we only need to keep track of the root
     // node and which 'B' nodes we have visited.
-    std::set<idx_t> visited;
+    std::vector<bool> visitedB(nVtxB, false);
 
     // The path describes how to go *back* through the tree to the root node -
     // this is the only way we will traverse the tree so it's all we need
@@ -104,13 +94,12 @@ namespace SparseHungarian {
 
     while (true) {
       idx_t current = vtxQueue.front();
-      std::cout << "Look at vtx: " << current << std::endl;
       vtxQueue.pop();
       // Find an edge on the equality subgraph leaving from this vertex
       for (idx_t ib = 0; ib < nVtxB; ++ib) {
         float slack = getSlack(current, ib);
         if (slack == 0) { // This is on the equality subgraph
-          if (visited.count(ib) ) // but we've already visited
+          if (visitedB[ib])
             continue;
           // This is an interesting vertex
           path[ib] = current;
@@ -120,7 +109,7 @@ namespace SparseHungarian {
           }
           else {
             // Add it to the queue and move on...
-            visited.insert(ib);
+            visitedB[ib] = true;
             vtxQueue.push(m_matchB[ib]);
           }
         }
@@ -131,7 +120,6 @@ namespace SparseHungarian {
         }
       }
       if (vtxQueue.size() == 0) {
-        std::cout << "Update labels" << std::endl;
         // Being here means that we didn't find the alternating path
         // This means that we need better labelling
         // We find the minimum slack on a vertex heading out of the equality
@@ -139,15 +127,15 @@ namespace SparseHungarian {
         float delta = std::numeric_limits<float>::infinity();
         idx_t minIdx = nVtxB;
         for (idx_t ib = 0; ib < nVtxB; ++ib) {
-          if (visited.count(ib) )
-            // We only visit nodes on the equality subgraph
+          if (visitedB[ib])
+            // Iff we visited it then it's on the subgraph and we're not
+            // interested
             continue;
           if (slacks[ib] < delta) {
             delta = slacks[ib];
             minIdx = ib;
           }
         }
-        std::cout << "delta: " << delta << " (" << minIdx << ")" << std::endl;
         // Now we update the labelling. Subtract delta from every 'A' vertex in
         // the equality subgraph and add it to every 'B' vertex in the equality
         // subgraph. This therefore has the effect of adding in a new vertex
@@ -159,7 +147,7 @@ namespace SparseHungarian {
           return augmentPath(path, minIdx);
         }
         else {
-          visited.insert(minIdx);
+          visitedB[minIdx] = true;
           vtxQueue.push(m_matchB[minIdx]);
           // And so we go on again :)
         }
@@ -171,12 +159,8 @@ namespace SparseHungarian {
       const std::map<idx_t, idx_t>& path,
       idx_t end)
   {
-    std::cout << "Augment path!" << std::endl;
     do {
-      std::cout << "GOOO" << std::endl;
-      std::cout << end << std::endl;
       idx_t nextA = path.at(end);
-      std::cout << nextA << std::endl;
       idx_t nextB = m_matchA[nextA];
       m_matchB[end] = path.at(end);
       m_matchA[nextA] = end;
